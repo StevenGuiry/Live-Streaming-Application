@@ -1,10 +1,19 @@
-from motiondetector import MotionDetector
+import argparse
+import datetime
+import imutils
+import threading
+import time
+import csv
+import smtplib
+import ssl
+
 from cv2 import cv2
-from imutils.video import VideoStream
 from flask import Flask
 from flask import Response
 from flask import render_template
-import threading, argparse, datetime, imutils, time
+from imutils.video import VideoStream
+
+from motiondetector import MotionDetector
 
 outputFrame = None
 lock = threading.Lock()
@@ -26,7 +35,7 @@ def detect_motion(frameCount):
     global vs, outputFrame, lock
 
     # Initialize motion detector
-    md = MotionDetector(accumWeight=0.1)
+    md = MotionDetector(accumWeight=0.35)
     total = 0
 
     while True:
@@ -74,9 +83,31 @@ def generate():
 
             if not flag:
                 continue
-        # Yield output frame in the byte format
+        # # Yield output frame in the byte format
         yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' +
                bytearray(encodedImage) + b'\r\n')
+
+
+def email_notifier():
+    message = """Subject: Live Stream
+
+        Hi {name}, we are live!!"""
+
+    from_address = "s.guiry1@gmail.com"
+    password = input("Type your password and press enter: ")
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+        server.login(from_address, password)
+        with open("contacts_file.csv") as file:
+            reader = csv.reader(file)
+            next(reader)  # Skip header row
+            for name, email in reader:
+                server.sendmail(
+                    from_address,
+                    email,
+                    message.format(name=name),
+                )
 
 
 @app.route("/video_feed")
@@ -88,10 +119,6 @@ def video_feed():
 if __name__ == '__main__':
     # Command line arguments
     ap = argparse.ArgumentParser()
-    ap.add_argument("-i", "--ip", type=str, required=True,
-                    help="ip address of the device")
-    ap.add_argument("-o", "--port", type=int, required=True,
-                    help="ephemeral port number of the server (1024 to 65535)")
     ap.add_argument("-f", "--frame-count", type=int, default=32,
                     help="# of frames used to construct the background model")
     args = vars(ap.parse_args())
@@ -102,9 +129,12 @@ if __name__ == '__main__':
     t.daemon = True
     t.start()
 
-    app.run(host=args["ip"], port=args["port"], debug=True,
+    email_notifier()
+    app.run(host="0.0.0.0", port=8080, debug=True,
             threaded=True, use_reloader=False)
 # Release video stream
 vs.stop()
 
-# Reference: https://www.pyimagesearch.com/2019/09/02/opencv-stream-video-to-web-browser-html-page/
+# References:
+# https://www.pyimagesearch.com/2019/09/02/opencv-stream-video-to-web-browser-html-page/
+# https://realpython.com/python-send-email/
