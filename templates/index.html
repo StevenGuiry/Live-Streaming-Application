@@ -10,9 +10,11 @@
     <hr>
 </div>
 <div class="imgbox">
-    <img class="center-fit" src="{{ url_for('video_feed') }}"/>
+    <img class="center-fit" src="{{ url_for('video_feed') }}" alt="video_feed"/>
+    <form action='{{ url_for('end_stream') }}'>
+        <input type="submit" value="Save and End Stream!"/>
+    </form>
 </div>
-
 <style>
     .heading {
         background-color: #FFFFFF;

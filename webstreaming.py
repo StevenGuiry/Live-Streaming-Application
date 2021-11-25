@@ -1,27 +1,31 @@
 import argparse
-import datetime
-import imutils
-import threading
-import time
 import csv
+import datetime
 import smtplib
 import ssl
+import threading
+import time
+import imutils
+import boto3
 
 from cv2 import cv2
 from flask import Flask
 from flask import Response
 from flask import render_template
-from imutils.video import VideoStream
+from flask import request
+from getpass import getpass
 
 from motiondetector import MotionDetector
 
 outputFrame = None
 lock = threading.Lock()
+filename = 'past_streams/stream-' + time.strftime("%Y%m%d-%H%M%S") + '.avi'
 
 # Initialize flask object
 app = Flask(__name__)
 
-vs = VideoStream(src=0).start()
+# vs = VideoStream(src=0).start()
+stream = cv2.VideoCapture(0)
 time.sleep(2.0)
 
 
@@ -32,7 +36,7 @@ def index():  # put application's code here
 
 def detect_motion(frameCount):
     # Get global references
-    global vs, outputFrame, lock
+    global outputFrame, lock
 
     # Initialize motion detector
     md = MotionDetector(accumWeight=0.35)
@@ -41,7 +45,11 @@ def detect_motion(frameCount):
     while True:
         # Reading next frame from the video stream, resize and convert to greyscale
         # and blur it
-        frame = vs.read()
+        (grabbed, frame) = stream.read()
+
+        if not grabbed:
+            break
+
         frame = imutils.resize(frame, width=400)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (7, 7), 0)
@@ -70,11 +78,17 @@ def detect_motion(frameCount):
 
 def generate():
     # Global references
-    global outputFrame, lock
+    global outputFrame, lock, filename
+
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(filename, fourcc, 20.0, (640, 480))
 
     # Loop over frames from the output stream
     while True:
         with lock:
+            ret, frame = stream.read()
+            # Save frame to video file
+            out.write(frame)
             # Check if output frame is available
             if outputFrame is None:
                 continue
@@ -83,18 +97,23 @@ def generate():
 
             if not flag:
                 continue
+
         # # Yield output frame in the byte format
         yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' +
                bytearray(encodedImage) + b'\r\n')
+    out.release()
 
 
 def email_notifier():
+    # Send email to contact list to let them know we are live.
     message = """Subject: Live Stream
 
-        Hi {name}, we are live!!"""
+        Hi {name}, we are live!!
+        
+        Join here: {url}"""
 
     from_address = "s.guiry1@gmail.com"
-    password = input("Type your password and press enter: ")
+    password = getpass("Type your password and press enter: ")
 
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
@@ -106,7 +125,7 @@ def email_notifier():
                 server.sendmail(
                     from_address,
                     email,
-                    message.format(name=name),
+                    message.format(name=name, url="http://192.168.15.142:8080"),
                 )
 
 
@@ -114,6 +133,26 @@ def email_notifier():
 def video_feed():
     return Response(generate(),
                     mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+@app.route('/end_stream/', methods=['GET', 'POST'])
+def end_stream():
+    s3_upload(filename)
+    shutdown_server()
+    stream.release()
+    return 'Stream has ended!'
+
+
+def shutdown_server():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+
+
+def s3_upload(file):
+    s3 = boto3.client('s3')
+    s3.upload_file(file, 'past-live-stream-bucket', file)
 
 
 if __name__ == '__main__':
@@ -130,10 +169,8 @@ if __name__ == '__main__':
     t.start()
 
     email_notifier()
-    app.run(host="0.0.0.0", port=8080, debug=True,
+    app.run(host="0.0.0.0", port=8080,
             threaded=True, use_reloader=False)
-# Release video stream
-vs.stop()
 
 # References:
 # https://www.pyimagesearch.com/2019/09/02/opencv-stream-video-to-web-browser-html-page/
