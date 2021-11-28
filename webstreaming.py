@@ -12,7 +12,6 @@ from cv2 import cv2
 from flask import Flask
 from flask import Response
 from flask import render_template
-from flask import request
 from getpass import getpass
 
 from motiondetector import MotionDetector
@@ -109,7 +108,7 @@ def email_notifier():
     message = """Subject: Live Stream
 
         Hi {name}, we are live!!
-        
+
         Join here: {url}"""
 
     from_address = "s.guiry1@gmail.com"
@@ -135,19 +134,11 @@ def video_feed():
                     mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
-@app.route('/end_stream/', methods=['GET', 'POST'])
-def end_stream():
+@app.route('/save_stream/', methods=['GET', 'POST'])
+def save_stream():
     s3_upload(filename)
-    shutdown_server()
     stream.release()
     return 'Stream has ended!'
-
-
-def shutdown_server():
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        raise RuntimeError('Not running with the Werkzeug Server')
-    func()
 
 
 def s3_upload(file):
@@ -168,7 +159,7 @@ if __name__ == '__main__':
     t.daemon = True
     t.start()
 
-    email_notifier()
+    #email_notifier()
     app.run(host="0.0.0.0", port=8080,
             threaded=True, use_reloader=False)
 
