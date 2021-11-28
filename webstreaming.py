@@ -7,6 +7,7 @@ import threading
 import time
 import imutils
 import boto3
+import socket
 
 from cv2 import cv2
 from flask import Flask
@@ -23,7 +24,7 @@ filename = 'past_streams/stream-' + time.strftime("%Y%m%d-%H%M%S") + '.avi'
 # Initialize flask object
 app = Flask(__name__)
 
-# vs = VideoStream(src=0).start()
+# Capture video stream from webcam and sleep for 2 seconds to enable webcam to warm up
 stream = cv2.VideoCapture(0)
 time.sleep(2.0)
 
@@ -113,6 +114,9 @@ def email_notifier():
 
     from_address = "s.guiry1@gmail.com"
     password = getpass("Type your password and press enter: ")
+    hostname = socket.gethostname()
+    ip_address = socket.gethostbyname(hostname)
+    port = ":8080/"
 
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
@@ -124,7 +128,7 @@ def email_notifier():
                 server.sendmail(
                     from_address,
                     email,
-                    message.format(name=name, url="http://192.168.15.142:8080"),
+                    message.format(name=name, url="http://"+ip_address+port),
                 )
 
 
@@ -159,7 +163,7 @@ if __name__ == '__main__':
     t.daemon = True
     t.start()
 
-    #email_notifier()
+    email_notifier()
     app.run(host="0.0.0.0", port=8080,
             threaded=True, use_reloader=False)
 

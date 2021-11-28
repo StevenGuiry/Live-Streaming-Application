@@ -48,4 +48,4 @@ class MotionDetector:
             (minX, minY) = (min(minX, x), min(minY, y))
             (maxX, maxY) = (max(maxX, x + w), max(maxY, y + h))
 
-        return (thresh, (minX, minY, maxX, maxY))
+        return thresh, (minX, minY, maxX, maxY)
